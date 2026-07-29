@@ -1,7 +1,10 @@
 from flask import Flask
+
 from routes.health import health_bp
 from config import Config
 from extensions import init_extensions
+
+import models
 
 
 def create_app():
