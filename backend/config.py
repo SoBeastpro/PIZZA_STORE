@@ -37,3 +37,9 @@ class Config:
     ADMIN_CHAT_ID = os.getenv(
         "ADMIN_CHAT_ID"
     )
+
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "DATABASE_URL"
+    )
+
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
