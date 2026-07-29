@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Пиццерия Сичных - Доставка пиццы в Таганроге</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+    <div class="parallax-bg"></div>
+    <div class="particles" id="particles"></div>
+
+    <!-- Мобильное меню -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu-header">
+            <img src="https://i.ibb.co/CKhTbykg/image.png" alt="Logo" class="mobile-logo">
+            <button class="mobile-menu-close" onclick="toggleMobileMenu()">×</button>
+        </div>
+        <ul class="mobile-nav-links">
+            <li><a href="#home" onclick="toggleMobileMenu()">Главная</a></li>
+            <li><a href="#menu" onclick="toggleMobileMenu()">Меню</a></li>
+            <li><a href="#contact" onclick="toggleMobileMenu()">Контакты</a></li>
+            <li><a href="#" onclick="toggleTheme(); toggleMobileMenu();">🌓 Сменить тему</a></li>
+        </ul>
+    </div>
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleMobileMenu()"></div>
+
+    <!-- Навигация -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <img src="https://i.ibb.co/CKhTbykg/image.png" alt="Пиццерия Сичных" class="logo-img">
+                <span class="logo-text">Сичных</span>
+            </a>
+
+            <ul class="nav-links">
+                <li><a href="#home">Главная</a></li>
+                <li><a href="#menu">Меню</a></li>
+                <li><a href="#contact">Контакты</a></li>
+            </ul>
+
+            <div class="nav-actions">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Сменить тему">
+                    <i class="fas fa-moon"></i>
+                </button>
+
+                <div class="cart-icon" onclick="toggleCart()">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span class="cart-label">Мой заказ</span>
+                    <span class="cart-count" id="cartCount">0</span>
+                </div>
+
+                <button class="hamburger" onclick="toggleMobileMenu()">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Герой секция -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <h1>Пиццерия Сичных</h1>
+            <p>Настоящая итальянская пицца в Таганроге</p>
+            <div class="hero-buttons">
+                <a href="#menu" class="btn">Смотреть меню</a>
+                <a href="#contact" class="btn btn-secondary">Контакты</a>
+            </div>
+        </div>
+
+        <div class="floating-pizza" style="top: 20%; left: 10%; animation-delay: 0s;">🍕</div>
+        <div class="floating-pizza" style="top: 60%; left: 80%; animation-delay: 1s;">🧀</div>
+        <div class="floating-pizza" style="top: 30%; left: 60%; animation-delay: 2s;">🌶️</div>
+        <div class="floating-pizza" style="top: 70%; left: 20%; animation-delay: 0.5s;">🍅</div>
+    </section>
+
+    <!-- Меню -->
+    <section class="menu-section" id="menu">
+        <h2 class="section-title">Наше меню</h2>
+
+        <div class="category-filters">
+            <button class="category-btn active" onclick="filterMenu('all')">Все</button>
+            <button class="category-btn" onclick="filterMenu('pizza')">🍕 Пиццы</button>
+            <button class="category-btn" onclick="filterMenu('salad')">🥗 Салаты</button>
+            <button class="category-btn" onclick="filterMenu('snacks')">🥨 Снеки/Закуски</button>
+            <button class="category-btn" onclick="filterMenu('cold_drinks')">🥤 Холодные напитки</button>
+            <button class="category-btn" onclick="filterMenu('hot_drinks')">☕ Горячие напитки</button>
+        </div>
+
+        <div class="pizza-grid" id="pizzaGrid"></div>
+    </section>
+
+    <!-- Контакты -->
+    <section class="contact-section" id="contact">
+        <h2 class="section-title">Контакты</h2>
+
+        <div class="contact-grid">
+            <div class="contact-info">
+                <div class="contact-item">
+                    <i class="fas fa-map-location-dot"></i>
+                    <div>
+                        <h3>Адрес</h3>
+                        <p>г. Таганрог, ул. Москатова, д. 10/1</p>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <i class="fas fa-phone-volume"></i>
+                    <div>
+                        <h3>Телефон для заказа</h3>
+                        <p><a href="tel:+79508511222">+7 (950) 851-12-22</a></p>
+                        <p><a href="tel:+79895483577">+7 (989) 548-35-77</a></p>
+
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <i class="fas fa-clock"></i>
+                    <div>
+                        <h3>Часы работы</h3>
+                        <p>Пн-Вс: 08:00 - 20:00</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="contact-map">
+                <iframe
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2713.123456789!2d38.8967!3d47.2075!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2z0YPQuy4g0JzQvtGB0LrQsNGC0L7QstCwLCAxMC8xLCDQotCw0LPQsNC90YDQvtCz!5e0!3m2!1sru!2sru!4v1620000000000!5m2!1sru!2sru"
+                    width="100%"
+                    height="300"
+                    style="border:0; border-radius: 20px;"
+                    allowfullscreen=""
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade">
+                </iframe>
+            </div>
+        </div>
+    </section>
+
+    <!-- Футер -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <div class="footer-logo">
+                    <img src="https://i.ibb.co/CKhTbykg/image.png" alt="Пиццерия Сичных">
+                </div>
+                <h3>Пиццерия Сичных</h3>
+                <p>Настоящая итальянская пицца с доставкой на дом в Таганроге!</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-telegram"></i></a>
+                    <a href="#"><i class="fab fa-vk"></i></a>
+                </div>
+            </div>
+
+            <div class="footer-section">
+                <h3>Меню</h3>
+                <ul>
+                    <li><a href="#menu">Пиццы</a></li>
+                    <li><a href="#menu">Салаты</a></li>
+                    <li><a href="#menu">Снеки/Закуски</a></li>
+                    <li><a href="#menu">Холодные напитки</a></li>
+                    <li><a href="#menu">Горячие напитки</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-section">
+                <h3>Информация</h3>
+                <ul>
+                    <li><a href="#contact">Контакты</a></li>
+                    <li><a href="#">Доставка и оплата</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-section">
+                <h3>Контакты</h3>
+                <p>📞 <a href="tel:+79895483577" style="color: var(--text-secondary); text-decoration: none;">+7 (989) 548-35-77</a></p>
+                <p>📍 г. Таганрог, ул. Москатова, 10/1</p>
+                <p>🕐 08:00 - 20:00</p>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <p>&copy; 2026 Пиццерия Сичных. Все права защищены.</p>
+            <p>Сделано с ❤️ для любителей пиццы</p>
+        </div>
+    </footer>
+
+    <!-- Модальное окно товара -->
+    <div class="modal-overlay" id="productModal" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeProductModal()">×</button>
+
+            <div class="product-detail">
+                <div class="product-image-large">
+                    <img id="modalImage" src="" alt="">
+                </div>
+
+                <div class="product-info-detailed">
+                    <h2 id="modalName"></h2>
+                    <p id="modalDescription"></p>
+
+                    <!-- Выбор размера (только для пицц) -->
+                    <div class="size-selector" id="sizeSelector" style="display: none;">
+                        <h3>Размер:</h3>
+                        <div class="size-buttons">
+                            <button class="size-btn active" id="size35" onclick="selectSize('35')">35 см</button>
+                            <button class="size-btn" id="size40" onclick="selectSize('40')">40 см</button>
+                        </div>
+                    </div>
+
+                    <div class="ingredients-section">
+                        <h3>Состав:</h3>
+                        <div class="ingredients-list" id="modalIngredients"></div>
+                    </div>
+
+                    <div class="product-price-large">
+                        <span id="modalPrice"></span> ₽
+                    </div>
+
+                    <button class="btn add-to-cart-large" onclick="addToCartFromModal()">
+                        <i class="fas fa-cart-plus"></i> В корзину
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно корзины -->
+    <div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+    <div class="cart-modal" id="cartModal">
+        <div class="cart-header">
+            <h2>Мой заказ</h2>
+            <button class="cart-close" onclick="toggleCart()">×</button>
+        </div>
+        <div class="cart-items" id="cartItems"><p>Корзина пуста</p></div>
+        <div class="cart-footer">
+            <p><strong>Итого: <span id="cartTotal">0</span> ₽</strong></p>
+            <button class="btn" onclick="checkout()">Оформить заказ</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно оформления заказа -->
+    <div class="modal-overlay" id="checkoutModal" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeCheckout()">×</button>
+            <h2>Оформление заказа</h2>
+
+            <div class="order-form">
+                <div class="form-group">
+                    <label>Имя</label>
+                    <input type="text" id="customerName" required>
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="tel" id="customerPhone" required>
+                </div>
+                <div class="form-group">
+                    <label>Адрес доставки</label>
+                    <textarea id="customerAddress" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Комментарий к заказу</label>
+                    <textarea id="customerComment"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Способ оплаты</label>
+                    <select id="paymentMethod">
+                        <option value="cash">Наличные</option>
+                        <option value="card">Картой курьеру</option>
+                        <option value="online">Онлайн</option>
+                    </select>
+                </div>
+
+                <div class="order-phone-notice">
+                    <i class="fas fa-phone"></i>
+                    <p>Для уточнения деталей заказа звоните:</p>
+                    <a href="tel:+79895483577" class="phone-link">+7 (989) 548-35-77</a>
+                </div>
+
+                <button class="btn" onclick="placeOrder()">Заказать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Отслеживание заказа -->
+    <div class="modal-overlay" id="orderTracking" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeTracking()">×</button>
+            <h2>Статус заказа #<span id="orderNumber"></span></h2>
+
+            <div class="status-progress">
+                <div class="status-line">
+                    <div class="status-line-fill" id="statusFill" style="width: 0%;"></div>
+                </div>
+                <div class="status-step" id="step1">
+                    <i class="fas fa-check-circle"></i>
+                    <p>Принят</p>
+                </div>
+                <div class="status-step" id="step2">
+                    <i class="fas fa-fire-burner"></i>
+                    <p>Готовится</p>
+                </div>
+                <div class="status-step" id="step3">
+                    <i class="fas fa-motorcycle"></i>
+                    <p>В пути</p>
+                </div>
+                <div class="status-step" id="step4">
+                    <i class="fas fa-home"></i>
+                    <p>Доставлен</p>
+                </div>
+            </div>
+
+            <p id="orderMessage" class="order-message"></p>
+
+            <div class="order-contact">
+                <p>Вопросы по заказу?</p>
+                <a href="tel:+79895483577" class="phone-link">+7 (989) 548-35-77</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="script.js?v=3"></script>
+</body>
+</html>

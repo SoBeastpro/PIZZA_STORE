@@ -1,0 +1,654 @@
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from config import TBANK_TERMINAL_KEY, TBANK_PASSWORD, TBANK_API_URL, BOT_TOKEN, ADMIN_CHAT_ID
+from flask_socketio import SocketIO, emit
+import json
+import os
+import requests
+from datetime import datetime
+import hashlib
+import logging
+import time
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__, static_folder='.', static_url_path='')
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+ORDERS_FILE = 'orders.json'
+
+def load_orders():
+    try:
+        if os.path.exists(ORDERS_FILE):
+            with open(ORDERS_FILE, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if content:
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        return data
+        return []
+    except Exception as e:
+        logger.error(f"Ошибка загрузки заказов: {e}")
+        return []
+
+
+def save_orders(orders_data):
+    try:
+        with open(ORDERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(orders_data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения заказов: {e}")
+        return False
+
+
+orders = load_orders()
+payments = {}
+
+
+def generate_token(params):
+    """
+    Генерация токена ПО ДОКУМЕНТАЦИИ Т-БАНКА.
+    Пароль добавляется после OrderId, но перед PayType.
+    """
+    filtered = {}
+    for key, value in params.items():
+        if key == 'Token':
+            continue
+        if key == 'DATA':
+            continue
+        if value is None or value == '':
+            continue
+        filtered[key] = str(value)
+
+    correct_order = ['Amount', 'Description', 'FailURL', 'Language', 'NotificationURL', 'OrderId', 'PayType',
+                     'SuccessURL', 'TerminalKey']
+
+    token_parts = []
+    for key in correct_order:
+        if key == 'PayType':
+            token_parts.append(TBANK_PASSWORD)
+        if key in filtered:
+            token_parts.append(filtered[key])
+
+    token_string = ''.join(token_parts)
+
+    logger.info(f"🔑 Ключи: {correct_order}")
+    logger.info(f"🔑 Строка подписи: {token_string}")
+
+    return hashlib.sha256(token_string.encode('utf-8')).hexdigest()
+
+
+def send_telegram_order(order_data):
+    """Отправка заказа в Telegram бот"""
+    try:
+        if not order_data:
+            logger.error("❌ order_data пустой, не могу отправить в Telegram")
+            return False
+
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+        # Формируем список товаров
+        items_text = ""
+        for item in order_data.get('items', []):
+            name = item.get('name', 'Товар')
+            quantity = item.get('quantity', 1)
+            price = item.get('price', 0)
+            total = price * quantity
+            items_text += f"\n• {name} x{quantity} = {total} ₽"
+
+        if not items_text:
+            items_text = "\n• Состав не указан"
+
+        # Статус заказа
+        status_map = {
+            'new': '🆕 Новый',
+            'accepted': '✅ Принят',
+            'cooking': '👨‍🍳 Готовится',
+            'delivering': '🛵 В пути',
+            'delivered': '🎉 Доставлен',
+            'cancelled': '❌ Отменён'
+        }
+        status = status_map.get(order_data.get('status', 'new'), '🆕 Новый')
+
+        message = f"""
+🍕 <b>НОВЫЙ ЗАКАЗ #{order_data['id']}</b>
+━━━━━━━━━━━━━━━━━━━━
+
+👤 <b>Клиент:</b> {order_data.get('customer', {}).get('name', 'Не указан')}
+📞 <b>Телефон:</b> {order_data.get('customer', {}).get('phone', 'Не указан')}
+📍 <b>Адрес:</b> {order_data.get('customer', {}).get('address', 'Не указан')}
+💬 <b>Комментарий:</b> {order_data.get('customer', {}).get('comment', 'Нет')}
+
+━━━━━━━━━━━━━━━━━━━━
+📋 <b>СОСТАВ:</b>
+{items_text}
+━━━━━━━━━━━━━━━━━━━━
+💰 <b>Сумма:</b> {order_data.get('total', 0)} ₽
+💳 <b>Оплата:</b> {order_data.get('payment', 'Не указано')}
+📊 <b>Статус:</b> {status}
+
+🕐 <b>Создан:</b> {order_data.get('created_at', datetime.now().strftime('%d.%m.%Y %H:%M:%S'))}
+"""
+
+        logger.info(f"📤 Отправка уведомления в Telegram...")
+        logger.info(f"   Chat ID: {ADMIN_CHAT_ID}")
+        logger.info(f"   Message length: {len(message)}")
+
+        response = requests.post(
+            url,
+            json={
+                'chat_id': ADMIN_CHAT_ID,
+                'text': message,
+                'parse_mode': 'HTML'
+            },
+            timeout=10
+        )
+
+        logger.info(f"📥 Telegram ответ: {response.status_code}")
+        logger.info(f"📥 Telegram тело: {response.text}")
+
+        if response.status_code == 200:
+            logger.info(f"✅ Уведомление о заказе #{order_data['id']} отправлено в Telegram")
+            return True
+        else:
+            logger.error(f"❌ Ошибка отправки в Telegram: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка отправки в Telegram: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
+
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    if os.path.exists(filename):
+        return send_from_directory('.', filename)
+    return jsonify({'error': 'Файл не найден'}), 404
+
+
+@app.route('/api/payment/init', methods=['POST'])
+def init_payment():
+    try:
+        data = request.json
+        order_id = str(data.get('order_id'))
+        amount = int(data.get('amount'))
+
+        logger.info(f"💰 Инициализация платежа")
+        logger.info(f"   OrderId: {order_id}")
+        logger.info(f"   Amount: {amount} коп. ({amount / 100} руб.)")
+
+        if not order_id or not amount:
+            return jsonify({'success': False, 'error': 'order_id и amount обязательны'}), 400
+
+        if amount < 10000:
+            amount = 10000
+            logger.info(f"   Сумма скорректирована до {amount} коп. (100 руб.)")
+
+        host = "https://pizzasich.online"
+
+        # ===== ПОЛУЧАЕМ ДАННЫЕ ЗАКАЗА ИЗ ЗАПРОСА =====
+        order_data = data.get('order_data')
+
+        # Если order_data не передан, создаём из данных запроса
+        if not order_data:
+            order_data = {
+                'id': int(order_id),
+                'customer': {
+                    'name': data.get('customer_name', 'Клиент'),
+                    'phone': data.get('customer_phone', ''),
+                    'address': data.get('customer_address', ''),
+                    'comment': data.get('customer_comment', '')
+                },
+                'items': data.get('items', []),
+                'total': data.get('total', amount / 100),
+                'payment': data.get('payment', 'online'),
+                'source': data.get('source', 'website')
+            }
+            logger.warning(f"⚠️ order_data не передан, создан из data")
+
+        logger.info(f"📦 Данные заказа для сохранения:")
+        logger.info(f"   ID: {order_data.get('id')}")
+        logger.info(f"   Сумма: {order_data.get('total')}")
+        logger.info(f"   Клиент: {order_data.get('customer', {}).get('name')}")
+
+        params = {
+            "TerminalKey": TBANK_TERMINAL_KEY,
+            "Amount": amount,
+            "OrderId": order_id,
+            "Description": f"Заказ в Пиццерии Сичных",
+            "PayType": "O",
+            "Language": "ru",
+            "NotificationURL": f"{host}/api/payment/callback",
+            "SuccessURL": f"{host}/success.html",
+            "FailURL": f"{host}/fail.html",
+            "DATA": {
+                "Email": "client@test.ru",
+                "Phone": "+79895483577"
+            }
+        }
+
+        params["Token"] = generate_token(params)
+
+        logger.info("=" * 70)
+        logger.info("📤 ПОЛНЫЙ JSON ЗАПРОС К Т-БАНК (Init):")
+        logger.info(json.dumps(params, ensure_ascii=False, indent=2))
+        logger.info("=" * 70)
+
+        response = requests.post(
+            f"{TBANK_API_URL}Init",
+            json=params,
+            timeout=60,
+            headers={'Content-Type': 'application/json'}
+        )
+
+        logger.info(f"📥 Статус HTTP: {response.status_code}")
+        logger.info(f"📥 Ответ: {response.text}")
+
+        if not response.text:
+            return jsonify({'success': False, 'error': 'Пустой ответ'}), 500
+
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            return jsonify({
+                'success': False,
+                'error': f'Невалидный JSON: {response.text[:100]}'
+            }), 500
+
+        if result.get('Success'):
+            payment_id = result.get('PaymentId')
+            payment_url = result.get('PaymentURL')
+
+            # Сохраняем платёж с данными заказа
+            payments[int(order_id)] = {
+                'payment_id': payment_id,
+                'status': 'NEW',
+                'amount': amount,
+                'created_at': datetime.now().isoformat(),
+                'order_data': order_data
+            }
+
+            logger.info(f"✅ Платёж создан! PaymentId: {payment_id}")
+            logger.info(f"🔗 Ссылка: {payment_url}")
+            logger.info(f"📦 Данные заказа сохранены для создания после оплаты")
+
+            return jsonify({
+                'success': True,
+                'payment_id': payment_id,
+                'payment_url': payment_url
+            })
+        else:
+            error_msg = result.get('Message', 'Неизвестная ошибка')
+            error_details = result.get('Details', '')
+            error_code = result.get('ErrorCode', '')
+
+            logger.error(f"❌ Ошибка: Code={error_code}, Msg={error_msg}, Details={error_details}")
+
+            return jsonify({
+                'success': False,
+                'error': f"{error_msg}: {error_details}" if error_details else error_msg
+            }), 400
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/payment/status/<int:order_id>', methods=['GET'])
+def check_payment(order_id):
+    payment = payments.get(order_id)
+    if not payment:
+        return jsonify({'status': 'not_found'})
+
+    try:
+        params = {
+            "TerminalKey": TBANK_TERMINAL_KEY,
+            "PaymentId": payment['payment_id']
+        }
+        params["Token"] = generate_token(params)
+
+        response = requests.post(
+            f"{TBANK_API_URL}GetState",
+            json=params,
+            timeout=30
+        )
+
+        if not response.text:
+            return jsonify({'status': 'error', 'message': 'Пустой ответ'})
+
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            return jsonify({'status': 'error', 'message': 'Невалидный JSON'})
+
+        if result.get('Success'):
+            status = result.get('Status', 'unknown')
+            payments[order_id]['status'] = status
+
+            logger.info(f"📊 Статус платежа #{order_id}: {status}")
+
+            if status == 'CONFIRMED':
+                existing_order = next((o for o in orders if o['id'] == order_id), None)
+
+                if not existing_order and payment.get('order_data'):
+                    order_data = payment['order_data']
+                    order_data['created_at'] = datetime.now().isoformat()
+                    order_data['status'] = 'accepted'
+                    order_data['payment_status'] = 'paid'
+
+                    orders.append(order_data)
+                    save_orders(orders)
+
+                    logger.info(f"✅ ЗАКАЗ #{order_id} СОЗДАН после успешной оплаты!")
+
+                    # ===== ОТПРАВКА В TELEGRAM =====
+                    send_telegram_order(order_data)
+
+                    socketio.emit('order_status_update', {
+                        'order_id': order_id,
+                        'status': 'accepted'
+                    })
+
+                    return jsonify({
+                        'status': status,
+                        'order_created': True,
+                        'order': order_data
+                    })
+                else:
+                    logger.warning(f"⚠️ Заказ #{order_id} уже существует или данные отсутствуют")
+                    return jsonify({
+                        'status': status,
+                        'order_created': False,
+                        'message': 'Заказ уже существует'
+                    })
+
+            elif status in ['REJECTED', 'DEADLINE_EXPIRED']:
+                logger.warning(f"❌ Платёж #{order_id} отклонён. Заказ НЕ создан.")
+                if order_id in payments:
+                    del payments[order_id]
+                return jsonify({
+                    'status': status,
+                    'order_created': False,
+                    'message': f'Платёж отклонён: {status}'
+                })
+
+            return jsonify({'status': status})
+        else:
+            return jsonify({'status': 'error', 'message': result.get('Message')})
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
+
+@app.route('/api/payment/callback', methods=['POST'])
+def payment_callback():
+    try:
+        data = request.json
+        logger.info(f"📩 Получен callback: {data}")
+
+        if data.get('Status') == 'CONFIRMED':
+            order_id = int(data.get('OrderId'))
+            logger.info(f"✅ Подтверждена оплата заказа #{order_id}")
+
+            existing_order = next((o for o in orders if o['id'] == order_id), None)
+
+            if not existing_order:
+                payment = payments.get(order_id)
+                if payment and payment.get('order_data'):
+                    order_data = payment['order_data']
+                    order_data['created_at'] = datetime.now().isoformat()
+                    order_data['status'] = 'accepted'
+                    order_data['payment_status'] = 'paid'
+
+                    orders.append(order_data)
+                    save_orders(orders)
+
+                    if order_id in payments:
+                        payments[order_id]['status'] = 'CONFIRMED'
+
+                    logger.info(f"✅ ЗАКАЗ #{order_id} СОЗДАН через callback!")
+
+                    # ===== ОТПРАВКА В TELEGRAM =====
+                    send_telegram_order(order_data)
+
+                    socketio.emit('order_status_update', {
+                        'order_id': order_id,
+                        'status': 'accepted'
+                    })
+                else:
+                    logger.warning(f"⚠️ Данные заказа #{order_id} не найдены")
+            else:
+                logger.info(f"ℹ️ Заказ #{order_id} уже существует")
+
+        elif data.get('Status') in ['REJECTED', 'DEADLINE_EXPIRED']:
+            order_id = int(data.get('OrderId'))
+            logger.warning(f"❌ Платёж #{order_id} отклонён. Заказ НЕ создан.")
+            if order_id in payments:
+                del payments[order_id]
+
+        return jsonify({'code': 0, 'Message': 'OK'})
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка callback: {e}")
+        return jsonify({'code': 0, 'Message': 'OK'})
+
+
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    global orders
+    try:
+        order_data = request.json
+        payment = order_data.get('payment', 'cash')
+
+        if payment == 'online':
+            logger.info(f"ℹ️ Заказ #{order_data['id']} будет создан после подтверждения оплаты")
+            return jsonify({
+                'success': True,
+                'message': 'Ожидайте подтверждения оплаты',
+                'order_id': order_data['id'],
+                'pending': True
+            }), 202
+
+        order_data['created_at'] = datetime.now().isoformat()
+        order_data['status'] = order_data.get('status', 'new')
+        order_data['payment_status'] = order_data.get('payment_status', 'pending')
+
+        orders.append(order_data)
+        save_orders(orders)
+
+        logger.info(f"✅ Заказ #{order_data['id']} сохранён (оплата наличными)")
+        logger.info(f"   Сумма: {order_data['total']} руб.")
+        logger.info(f"   Клиент: {order_data['customer']['name']}")
+
+        # ===== ОТПРАВКА В TELEGRAM ДЛЯ НАЛИЧНЫХ =====
+        send_telegram_order(order_data)
+
+        socketio.emit('new_order', order_data)
+
+        return jsonify({'success': True, 'order': order_data}), 201
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания заказа: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/api/orders', methods=['GET'])
+def get_orders():
+    return jsonify(orders)
+
+
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
+def get_order(order_id):
+    for order in orders:
+        if order.get('id') == order_id:
+            return jsonify(order)
+    return jsonify({'error': 'Не найден'}), 404
+
+
+@app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
+def update_order_status(order_id):
+    data = request.json
+    for order in orders:
+        if order.get('id') == order_id:
+            order['status'] = data.get('status', order['status'])
+            save_orders(orders)
+            socketio.emit('order_status_update', {
+                'order_id': order_id,
+                'status': order['status']
+            })
+            return jsonify({'success': True})
+    return jsonify({'error': 'Не найден'}), 404
+
+
+@app.route('/success.html')
+def success_page():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Оплата успешна</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            .container {
+                text-align: center;
+                padding: 2rem;
+                background: rgba(255,255,255,0.1);
+                border-radius: 20px;
+            }
+            h1 { font-size: 3rem; margin-bottom: 1rem; }
+            p { font-size: 1.2rem; margin-bottom: 2rem; }
+            .btn {
+                background: white;
+                color: #667eea;
+                padding: 12px 30px;
+                text-decoration: none;
+                border-radius: 50px;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>✅ Оплата успешна!</h1>
+            <p>Ваш заказ принят и готовится.<br>Статус заказа можно отслеживать на сайте.</p>
+            <a href="/" class="btn">Вернуться на сайт</a>
+        </div>
+        <script>
+            if (window.opener) {
+                window.opener.postMessage({ type: 'payment_success' }, '*');
+                setTimeout(() => window.close(), 2000);
+            } else {
+                window.location.href = '/';
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+
+@app.route('/fail.html')
+def fail_page():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Ошибка оплаты</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                color: white;
+            }
+            .container {
+                text-align: center;
+                padding: 2rem;
+                background: rgba(255,255,255,0.1);
+                border-radius: 20px;
+            }
+            h1 { font-size: 3rem; margin-bottom: 1rem; }
+            p { font-size: 1.2rem; margin-bottom: 2rem; }
+            .btn {
+                background: white;
+                color: #f5576c;
+                padding: 12px 30px;
+                text-decoration: none;
+                border-radius: 50px;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>❌ Ошибка оплаты</h1>
+            <p>Попробуйте ещё раз или выберите другой способ оплаты.<br>Приносим извинения за неудобства.</p>
+            <a href="/" class="btn">Вернуться на сайт</a>
+        </div>
+        <script>
+            if (window.opener) {
+                window.opener.postMessage({ type: 'payment_failed' }, '*');
+                setTimeout(() => window.close(), 2000);
+            } else {
+                window.location.href = '/';
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+
+@socketio.on('connect')
+def handle_connect():
+    logger.info('🔗 Клиент подключился')
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info('🔌 Клиент отключился')
+
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("🍕 ПИЦЦЕРИЯ СИЧНЫХ - СЕРВЕР ЗАПУЩЕН")
+    print("=" * 60)
+    print(f"💳 Т-Банк API URL: {TBANK_API_URL}")
+    print(f"🔑 Терминал: {TBANK_TERMINAL_KEY}")
+    print("=" * 60)
+    print("📌 ТЕСТОВАЯ КАРТА (успешная оплата без 3DS):")
+    print("   Номер: 2200770239097761")
+    print("   Срок: 12/30")
+    print("   CVC: 123")
+    print("=" * 60)
+    print("📌 Альтернативные тестовые карты (с 3DS):")
+    print("   Успешная (Frictionless): 2201382000000013 / 12/30 / 123")
+    print("   Успешная (Challenge):   2201382000000047 / 12/30 / 123 (пароль: 1qwezxc)")
+    print("=" * 60)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
