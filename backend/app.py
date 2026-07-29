@@ -1,5 +1,5 @@
 from flask import Flask
-
+from routes.health import health_bp
 from config import Config
 from extensions import init_extensions
 
@@ -10,6 +10,9 @@ def create_app():
     app.config.from_object(Config)
 
     init_extensions(app)
+    app.register_blueprint(
+        health_bp
+    )
 
     return app
 
