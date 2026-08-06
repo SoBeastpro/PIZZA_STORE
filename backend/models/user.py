@@ -1,34 +1,40 @@
 from datetime import datetime
 
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from extensions import db
 
 
 class User(db.Model):
     __tablename__ = "users"
 
-    id = db.Column(
-        db.Integer,
+    id: Mapped[int] = mapped_column(
         primary_key=True
     )
 
-    phone = db.Column(
+    phone: Mapped[str | None] = mapped_column(
         db.String(20),
         unique=True,
         nullable=True
     )
 
-    email = db.Column(
+    email: Mapped[str | None] = mapped_column(
         db.String(120),
         unique=True,
         nullable=True
     )
 
-    name = db.Column(
+    name: Mapped[str | None] = mapped_column(
         db.String(100),
         nullable=True
     )
 
-    created_at = db.Column(
-        db.DateTime,
+    created_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow
+    )
+
+
+    orders: Mapped[list["Order"]] = relationship(
+        "Order",
+        back_populates="user"
     )
